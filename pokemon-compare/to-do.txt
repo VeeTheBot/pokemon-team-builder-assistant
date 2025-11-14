@@ -1,0 +1,28 @@
+TO-DO:
+
+[ ] Fix damage relations for dual-type Pokémon (need to remove duplicate type appearances)
+
+[ ] Similarly, have a damage relation spanning the entire team combined
+
+[ ] Increase code reusability
+
+
+
+OPTIONAL:
+
+[ ] Add a section to calculate a Pokémon's base stat total
+
+[ ] Let the user add and remove slots freely, between 1 to 5 Pokémon
+
+[ ] Add visual bar graph to show distributions of a Pokémon's stat spread (like how Pokémon Showdown does it)
+
+[ ] Scale down sprites to be their original proportions
+
+
+
+COMPLETED:
+
+[X] Implement a custom element to automatically create each of the slots
+
+[X] Add an error Pokémon to prevent erroneous names from crashing the program
+

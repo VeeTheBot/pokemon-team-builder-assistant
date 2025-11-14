@@ -1,0 +1,91 @@
+<!-- 
+    Author: Manhattan Calabro
+  -->
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <title>Pokémon Team Builder Assistant</title>
+
+        <link href="pokemon.css" rel="stylesheet" type="text/css" media="all">
+        <script src="pokemon.js" type="text/javascript" defer></script>
+        <script src="slot.js" type="text/javascript" defer></script>
+    </head>
+
+    <body>
+        <h1>Pokémon Team Builder Assistant</h1>
+
+        <div id="content-box">
+            <div is="pokemon-slot" index=1></div>
+            <input type="text" id="slot2">
+            <input type="text" id="slot3">
+            <input type="text" id="slot4">
+            <input type="text" id="slot5">
+            <input type="text" id="slot6">
+
+            <!-- This is the previous version done in HTML, instead of being automated via JS.
+            <div class="slot-box">
+                <img class="pokemon-img" id="img1" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png">
+                <div class="info-box">
+                    <div class="input-box">
+                        <input id="input1" type="text" placeholder="Insert Pokémon here...">
+                        <button onclick="populateSlot(1)">Submit</button>
+                    </div>
+                    <div class="type-stat-box">
+                        <div class="stat-box">
+                            <table>
+                                <tr>
+                                    <td>HP</td>
+                                    <td id="stat1_1"></td>
+                                </tr>
+                                <tr>
+                                    <td>Atk</td>
+                                    <td id="stat1_2"></td>
+                                </tr>
+                                <tr>
+                                    <td>Def</td>
+                                    <td id="stat1_3"></td>
+                                </tr>
+                                <tr>
+                                    <td>Sp. Atk</td>
+                                    <td id="stat1_4"></td>
+                                </tr>
+                                <tr>
+                                    <td>Sp. Def</td>
+                                    <td id="stat1_5"></td>
+                                </tr>
+                                <tr>
+                                    <td>Spd</td>
+                                    <td id="stat1_6"></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="type-box">
+                            <span>Types:</span>
+                            <img class="type-img" id="typePrimary1">
+                            <img class="type-img" id="typeSecondary1">
+                        </div>
+                        <div class="effective-box">
+                            <div class="weak-box">
+                                <span>Weak to:</span>
+                                <div id="weak-list-1"></div>
+                            </div>
+                            <div class="immune-box">
+                                <span>Immune to:</span>
+                                <div id="immune-list-1"></div>
+                            </div>
+                            <div class="resist-box">
+                                <span>Resistant to:</span>
+                                <div id="resist-list-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+             -->
+        </div>
+    </body>
+</html>
