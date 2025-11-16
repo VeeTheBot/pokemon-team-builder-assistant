@@ -98,68 +98,93 @@ async function populateSlot(index) {
     //#region Replace the Pokémon's damage relations (defensive only)
     let damageRelations = new Map();
 
-    let temp = typePrimary["damage_relations"]["double_damage_from"];
-    let weakArray = new Array();
-    for(let z = 0; z < temp.length; z++) {
-        let weakMap = {"name" : temp[z]["name"], "url" : temp[z]["url"]};
-        weakArray.push(weakMap);
-    }
-    console.log(weakArray);
-
-    console.log(weakArray.includes({"ground" : "https://pokeapi.co/api/v2/type/5/"}));
-
-    damageRelations.set("weak", typePrimary["damage_relations"]["double_damage_from"].concat(typeSecondary["damage_relations"]["double_damage_from"]));
-    damageRelations.set("immune", typePrimary["damage_relations"]["no_damage_from"].concat(typeSecondary["damage_relations"]["no_damage_from"]));
-    damageRelations.set("resist", typePrimary["damage_relations"]["half_damage_from"].concat(typeSecondary["damage_relations"]["half_damage_from"]));
-
-    // Possibly rebuild the map to make searching and comparison easier? We could make functions to handle them, but having separate functions will make the time complexity slower, since each will most like run through an array in a for loop at least once.
-
-    // If there are any types in the immunity section, remove them from the weakness section and the resistance section.
-    for(let i = 0; i < damageRelations.get("immune").length; i++) {
-        let immunity = damageRelations.get("immune")[i];
-
-        for(let w = 0; w < damageRelations.get("weak").length; w++) {
-            if(damageRelations.get("weak")[w]["name"] == immunity["name"]) {
-                damageRelations.get("weak").splice(w, 1);
-                w--;
-            }
+    // Add immunities
+    let subMap = new Map();
+    let tempTypeArray = typePrimary["damage_relations"]["no_damage_from"];
+    for(let z = 0; z < tempTypeArray.length; z++) {
+        // Add the type to the immunities if it's not in the map yet
+        if(!subMap.has(tempTypeArray[z]["name"])) {
+            subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
         }
-
-        for(let r = 0; r < damageRelations.get("resist").length; r++) {
-            if(damageRelations.get("resist")[r]["name"] == immunity["name"]) {
-                damageRelations.get("resist").splice(r, 1);
-                r--;
+    }
+    if(typeSecondary != null) {
+        tempTypeArray = typeSecondary["damage_relations"]["no_damage_from"];
+        for(let z = 0; z < tempTypeArray.length; z++) {
+            // Add the type to the immunities if it's not in the map yet
+            if(!subMap.has(tempTypeArray[z]["name"])) {
+                subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
             }
         }
     }
+    damageRelations.set("immune", subMap);
 
-    // If there are any types shared between the weakness section and resistance section, remove that type from both sections.
-    //
+    // Add weaknesses
+    subMap = new Map();
+    tempTypeArray = typePrimary["damage_relations"]["double_damage_from"];
+    for(let z = 0; z < tempTypeArray.length; z++) {
+        // Add the type to the weaknesses if it's not immune and it's not in the map yet
+        if(!damageRelations.get("immune").has(tempTypeArray[z]["name"]) && !subMap.has(tempTypeArray[z]["name"])) {
+            subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
+        }
+    }
+    if(typeSecondary != null) {
+        tempTypeArray = typeSecondary["damage_relations"]["double_damage_from"];
+        for(let z = 0; z < tempTypeArray.length; z++) {
+            // Add the type to the weaknesses if it's not immune and it's not in the map yet
+            if(!damageRelations.get("immune").has(tempTypeArray[z]["name"]) && !subMap.has(tempTypeArray[z]["name"])) {
+                subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
+            }
+        }
+    }
+    damageRelations.set("weak", subMap);
 
-    // If there are any repeats in the weakness section, remove all but one instance.
-    //
+    // Add resistances
+    subMap = new Map();
+    tempTypeArray = typePrimary["damage_relations"]["half_damage_from"];
+    for(let z = 0; z < tempTypeArray.length; z++) {
+        // If the type is both a weakness and a resistance, delete it from the weaknesses
+        if(damageRelations.get("weak").has(tempTypeArray[z]["name"])) {
+            damageRelations.get("weak").delete(tempTypeArray[z]["name"]);
+        }
+        // Otherwise, add the type to the resistances if it's not immune and it's not in the map yet
+        else if(!damageRelations.get("immune").has(tempTypeArray[z]["name"]) && !subMap.has(tempTypeArray[z]["name"])) {
+            subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
+        }
+    }
+    if(typeSecondary != null) {
+        tempTypeArray = typeSecondary["damage_relations"]["half_damage_from"];
+        for(let z = 0; z < tempTypeArray.length; z++) {
+            // If the type is both a weakness and a resistance, delete it from the weaknesses
+            if(damageRelations.get("weak").has(tempTypeArray[z]["name"])) {
+                damageRelations.get("weak").delete(tempTypeArray[z]["name"]);
+            }
+            // Otherwise, add the type to the resistances if it's not immune and it's not in the map yet
+            else if(!damageRelations.get("immune").has(tempTypeArray[z]["name"]) && !subMap.has(tempTypeArray[z]["name"])) {
+                subMap.set(tempTypeArray[z]["name"], tempTypeArray[z]["url"]);
+            }
+        }
+    }
+    damageRelations.set("resist", subMap);
 
-    // If there are any repeats in the resistance section, remove all but one instance.
-    //
-
-    for(let [key, value] of damageRelations) {
+    // Display the damage relations
+    for(let [key, map] of damageRelations) {
         let list = document.getElementById(key + "-list-" + index.toString());
 
         // Clear out the previous damage relation lists
         clearElementChildren(list);
 
         // Populate the damage relation lists
-        for(let z = 0; z < value.length; z++) {
+        for(let [typeName, typeValue] of map) {
             let element = document.createElement("img");
 
-            url = "https://pokeapi.co/api/v2/type/" + value[z]["name"];
+            url = "https://pokeapi.co/api/v2/type/" + typeName;
             res = await fetch(url);
             let typeImg = await res.json();
 
             element.src = typeImg["sprites"]["generation-viii"]["sword-shield"]["name_icon"];
 
             element.classList.add("type-img");
-            element.alt = value[z]["name"];
+            element.alt = typeName;
 
             list.append(element);
         }

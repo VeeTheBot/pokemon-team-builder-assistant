@@ -1,7 +1,5 @@
 TO-DO:
 
-[ ] Fix damage relations for dual-type Pokémon (need to remove duplicate type appearances)
-
 [ ] Similarly, have a damage relation spanning the entire team combined
 
 [ ] Increase code reusability
@@ -10,13 +8,15 @@ TO-DO:
 
 OPTIONAL:
 
+[ ] Show if a Pokemon is doubly-weak or doubly-resistant to a specific type
+
 [ ] Add a section to calculate a Pokémon's base stat total
 
 [ ] Let the user add and remove slots freely, between 1 to 5 Pokémon
 
 [ ] Add visual bar graph to show distributions of a Pokémon's stat spread (like how Pokémon Showdown does it)
 
-[ ] Scale down sprites to be their original proportions
+[ ] Have the input accept an enter press to find the Pokémon
 
 
 
@@ -26,3 +26,6 @@ COMPLETED:
 
 [X] Add an error Pokémon to prevent erroneous names from crashing the program
 
+[X] Scale down sprites to be their original proportions
+
+[X] Fix damage relations for dual-type Pokémon (need to remove duplicate type appearances)
