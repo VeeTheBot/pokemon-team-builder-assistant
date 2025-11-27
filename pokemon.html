@@ -1,0 +1,44 @@
+<!--
+    Author: Zhengyao Huang
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Team Builder Assistant</title>
+    <link href="pokemon.css" rel="stylesheet" type="text/css" media="all">
+    <script src="pokemon.js" type="text/javascript" defer></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Pokémon Team Builder Assistant</h1>
+        <p class="subtitle">Build your team and analyze type coverage</p>
+
+        <div id="team-analysis" class="team-analysis">
+            <h2>📊 Team Analysis</h2>
+            <div class="analysis-grid">
+                <div class="analysis-section weaknesses">
+                    <h3>⚔️ Team Weaknesses</h3>
+                    <div id="team-weaknesses"></div>
+                </div>
+                <div class="analysis-section resistances">
+                    <h3>🛡️ Team Resistances</h3>
+                    <div id="team-resistances"></div>
+                </div>
+                <div class="analysis-section immunities">
+                    <h3>✨ Team Immunities</h3>
+                    <div id="team-immunities"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="slots-container"></div>
+
+        <button class="btn btn-add" id="add-slot-btn" onclick="addSlot()">
+            ➕ Add Pokémon Slot (<span id="slot-count">1</span>/6)
+        </button>
+    </div>
+</body>
+</html>
