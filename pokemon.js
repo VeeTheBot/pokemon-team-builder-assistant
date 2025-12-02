@@ -1,5 +1,5 @@
 /*
-    Author: Zhengyao Huang
+    Authors: Zhengyao Huang, Manhattan Calabro
 */
 
 const typeChart = {
@@ -25,6 +25,8 @@ const typeChart = {
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
+// Note, this restricts how many Pokemon the user may add; not how many Pokemon are in their final team after calculations
+const maxTeamSize = 5;
 
 // Calculate defensive matchup
 function calculateDefensiveMatchup(types) {
@@ -245,7 +247,7 @@ function displayTeamAnalysis(elementId, data) {
 
 // Add slot
 function addSlot() {
-    if (slots.length >= 6) return;
+    if (slots.length >= maxTeamSize) return;
     
     const newSlot = { id: nextId++, pokemon: null };
     slots.push(newSlot);
@@ -288,7 +290,8 @@ function renderSlots() {
 // Update slot count
 function updateSlotCount() {
     document.getElementById('slot-count').textContent = slots.length;
-    document.getElementById('add-slot-btn').style.display = slots.length >= 6 ? 'none' : 'block';
+    document.getElementById('add-slot-btn').style.display = slots.length >= maxTeamSize ? 'none' : 'block';
+    document.getElementById('slot-count-max').textContent = maxTeamSize;
 }
 
 // Initialize
