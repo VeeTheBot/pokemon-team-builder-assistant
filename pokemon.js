@@ -2,6 +2,7 @@
     Authors: Zhengyao Huang, Manhattan Calabro
 */
 
+/*
 const typeChart = {
     normal: { rock: 0.5, ghost: 0, steel: 0.5 },
     fire: { fire: 0.5, water: 0.5, grass: 2, ice: 2, bug: 2, rock: 0.5, dragon: 0.5, steel: 2 },
@@ -22,6 +23,7 @@ const typeChart = {
     steel: { fire: 0.5, water: 0.5, electric: 0.5, ice: 2, rock: 2, steel: 0.5, fairy: 2 },
     fairy: { fire: 0.5, fighting: 2, poison: 0.5, dragon: 2, dark: 2, steel: 0.5 }
 };
+*/
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
@@ -32,11 +34,11 @@ const maxTeamSize = 5;
 function calculateDefensiveMatchup(types) {
     const matchup = {};
     
-    Object.keys(typeChart).forEach(attackType => {
+    Object.keys(typeDictionary).forEach(attackType => {
         let multiplier = 1;
         
         types.forEach(defenseType => {
-            const effectiveness = typeChart[attackType][defenseType.type.name];
+            const effectiveness = typeDictionary[attackType][defenseType.type.name];
             if (effectiveness !== undefined) {
                 multiplier *= effectiveness;
             }
