@@ -281,7 +281,7 @@ function renderSlots() {
                     <div class="input-box">
                         <input type="text" id="input-${slot.id}" placeholder="Enter Pokémon name..." onkeydown="if(event.key === 'Enter') fetchPokemon(${slot.id})">
                         <button class="btn btn-search" onclick="fetchPokemon(${slot.id})">Search</button>
-                        ${slots.length > 1 ? `<button class="btn btn-remove" onclick="removeSlot(${slot.id})">✕</button>` : ''}
+                        ${slots.length > 1 ? `<button class="btn btn-remove" onclick="warningPopup(${slot.id})">✕</button>` : ''}
                     </div>
                     <div class="pokemon-info"></div>
                 </div>
