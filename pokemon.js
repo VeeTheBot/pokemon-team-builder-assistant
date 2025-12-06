@@ -269,6 +269,7 @@ function removeSlot(slotId) {
 
 // Render all slots
 function renderSlots() {
+    // Create empty slots
     const container = document.getElementById('slots-container');
     container.innerHTML = slots.map(slot => `
         <div class="slot-box" id="slot-${slot.id}">
@@ -287,6 +288,13 @@ function renderSlots() {
             </div>
         </div>
     `).join('');
+
+    // Display currently-saved Pokemon in slots
+    slots.forEach(slot => {
+        if(slot.pokemon != null) {
+            displayPokemon(slot.id, slot.pokemon);
+        }
+    });
 }
 
 // Update slot count
