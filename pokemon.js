@@ -309,6 +309,9 @@ renderSlots();
 updateSlotCount();
 
 
+
+//#region Prolog Backend Integration Functions
+
 // PROLOG BACKEND INTEGRATION FUNCTIONS
 // Team recommendation functionality onClick
 async function getIntelligentRecommendations() {
@@ -489,3 +492,4 @@ function addRecommendedPokemon(pokemonName) {
 //     smartBtn.onclick = getIntelligentRecommendations;
 // });
 
+//#endregion
