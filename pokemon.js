@@ -307,3 +307,185 @@ function updateSlotCount() {
 // Initialize
 renderSlots();
 updateSlotCount();
+
+
+// PROLOG BACKEND INTEGRATION FUNCTIONS
+// Team recommendation functionality onClick
+async function getIntelligentRecommendations() {
+    // const currentTeam = slots
+    //     .filter(slot => slot.pokemon)
+    //     .map(slot => slot.pokemon.name);
+    const currentTeam = slots
+        .filter(slot => slot.pokemon)
+        .map(slot => {
+            const p = slot.pokemon;
+
+            return {
+                name: p.name,
+                // sprite: p.sprite,
+                types: p.types.map(t => t.type.name), // convert type object to string
+                stats: p.stats.reduce((acc, stat) => {  //adds all the stat values together
+                    acc[stat.stat.name] = stat.base_stat;
+                    return acc;
+                }, {}),
+                baseStatTotal: p.baseStatTotal,
+                matchup: p.matchup
+            };
+        });
+
+
+    if (currentTeam.length === 0) {
+        alert('Please add some Pokémon to your team first!');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:5000/api/analyze', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ team: currentTeam })
+            
+        });
+
+        const data = await response.json();
+        displayKnowledgeBasedAnalysis(data);
+        
+    } catch (error) {
+        console.error('Error getting analysis:', error);
+        alert('Error connecting to Prolog backend. Make sure Python server is running on port 5000.');
+    }
+}
+
+// The display after click
+function displayKnowledgeBasedAnalysis(data) {
+    // Remove existing analysis if present
+    const existingAnalysis = document.getElementById('knowledge-analysis');
+    if (existingAnalysis) {
+        existingAnalysis.remove();
+    }
+    
+    // Create analysis display
+    const analysisDiv = document.createElement('div');
+    analysisDiv.id = 'knowledge-analysis';
+    analysisDiv.className = 'team-analysis';
+    analysisDiv.innerHTML = `
+        <h2>🧠 Knowledge-Based Team Analysis</h2>
+        
+        <div class="kr-methods">
+            <h3>🧩 Knowledge Representation Methods Used:</h3>
+            <ul>
+                ${data.analysis.knowledge_representation_used.map(method => 
+                    `<li>${method}</li>`
+                ).join('')}
+            </ul>
+        </div>
+        
+        <div class="propositional-logic analysis-section">
+            <h3>📝 Propositional Logic Analysis:</h3>
+            <p><strong>Type Coverage Score:</strong> ${(data.analysis.propositional_logic.score * 100).toFixed(1)}%</p>
+            <div class="coverage-grid">
+                ${Object.entries(data.analysis.propositional_logic.type_coverage).map(([type, covered]) => `
+                    <div class="coverage-item ${covered ? 'covered' : 'missing'}">
+                        <span class="type-badge type-${type}">${type}</span>
+                        <span>${covered ? '✓ Covered' : '✗ Missing'}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div class="prolog-recommendations analysis-section">
+            <h3>🤖 Prolog-Based Recommendations:</h3>
+            ${data.analysis.logic_programming.length > 0 ? 
+                data.analysis.logic_programming.map(rec => `
+                    <div class="recommendation-item">
+                        <h4>${rec.pokemon}</h4>
+                        <p>${rec.explanation}</p>
+                        <button class="btn btn-search" onclick="addRecommendedPokemon('${rec.pokemon}')">
+                            Add to Team
+                        </button>
+                    </div>
+                `).join('') :
+                '<p>No specific recommendations needed. Team looks balanced!</p>'
+            }
+        </div>
+        
+        <div class="planning-analysis analysis-section">
+            <h3>📋 Role Planning Analysis:</h3>
+            <div class="role-grid">
+                <div class="role-column">
+                    <h4>Current Roles:</h4>
+                    ${Object.entries(data.analysis.planning.current_roles).map(([role, count]) => `
+                        <div class="role-item">
+                            <span>${role}:</span>
+                            <span class="count-badge">${count}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="role-column">
+                    <h4>Missing Roles:</h4>
+                    ${Object.entries(data.analysis.planning.missing_roles).map(([role, count]) => `
+                        <div class="role-item">
+                            <span>${role}:</span>
+                            <span class="count-badge missing">${count} needed</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+        
+        <div class="explanation analysis-section">
+            <h3>💡 Reasoning Explanation:</h3>
+            <div class="explanation-text">
+                ${data.analysis.explanation}
+            </div>
+        </div>
+    `;
+    
+    // Insert after team analysis
+    const teamAnalysis = document.getElementById('team-analysis');
+    teamAnalysis.parentNode.insertBefore(analysisDiv, teamAnalysis.nextSibling);
+    
+    // Show the analysis
+    analysisDiv.classList.add('active');
+}
+
+function addRecommendedPokemon(pokemonName) {
+    // Find first empty slot or create new one
+    let emptySlot = slots.find(slot => !slot.pokemon);
+    
+    if (!emptySlot && slots.length < 6) {
+        addSlot();
+        emptySlot = slots[slots.length - 1];
+    }
+    
+    if (emptySlot) {
+        const input = document.getElementById(`input-${emptySlot.id}`);
+        input.value = pokemonName;
+        fetchPokemon(emptySlot.id);
+    } else {
+        alert('Team is full! Remove a Pokémon first.');
+    }
+}
+
+// Add recommendation button to UI
+// function addKnowledgeFeatures() {
+//     // Add intelligent analysis button
+//     const addBtn = document.getElementById('add-slot-btn');
+//     const smartBtn = document.createElement('button');
+//     smartBtn.className = 'btn btn-add';
+//     smartBtn.style.background = '#8b5cf6';
+//     smartBtn.style.marginBottom = '10px';
+//     smartBtn.innerHTML = '🧠 Get Intelligent Analysis (Prolog)';
+//     smartBtn.onclick = getIntelligentRecommendations;
+    
+//     addBtn.parentNode.insertBefore(smartBtn, addBtn);
+// }
+
+// Call on page load
+// document.addEventListener('DOMContentLoaded', function () {
+//     const smartBtn = document.getElementById('analysis-btn');
+//     smartBtn.onclick = getIntelligentRecommendations;
+// });
+
