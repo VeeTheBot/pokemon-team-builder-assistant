@@ -27,8 +27,131 @@ const typeChart = {
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
-// Note, this restricts how many Pokemon the user may add; not how many Pokemon are in their final team after calculations
 const maxTeamSize = 5;
+let allPokemonNames = []; // For autocomplete
+
+// Load all Pokemon names for autocomplete
+async function loadPokemonNames() {
+    try {
+        const response = await fetch('https://pokeapi.co/api/v2/pokemon?limit=1000');
+        const data = await response.json();
+        allPokemonNames = data.results.map(p => p.name);
+        console.log('✓ Loaded', allPokemonNames.length, 'Pokémon names for autocomplete');
+    } catch (error) {
+        console.error('Failed to load Pokémon names:', error);
+    }
+}
+
+// Show autocomplete suggestions
+function showAutocompleteSuggestions(input, suggestions) {
+    // Remove existing suggestions
+    const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
+    if (existingSuggestions) {
+        existingSuggestions.remove();
+    }
+
+    if (suggestions.length === 0) return;
+
+    const suggestionsDiv = document.createElement('div');
+    suggestionsDiv.className = 'autocomplete-suggestions';
+    
+    suggestions.slice(0, 8).forEach(name => {
+        const suggestionItem = document.createElement('div');
+        suggestionItem.className = 'autocomplete-item';
+        suggestionItem.textContent = name;
+        suggestionItem.addEventListener('click', () => {
+            input.value = name;
+            suggestionsDiv.remove();
+            const slotId = parseInt(input.id.split('-')[1]);
+            fetchPokemon(slotId);
+        });
+        suggestionsDiv.appendChild(suggestionItem);
+    });
+
+    input.parentElement.appendChild(suggestionsDiv);
+}
+
+// Calculate team strength score
+function calculateTeamStrength(teamData) {
+    if (teamData.length === 0) return 0;
+
+    let score = 0;
+    
+    // 1. Team size (max 20 points)
+    score += (teamData.length / 6) * 20;
+    
+    // 2. Type coverage (max 25 points)
+    const importantTypes = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water', 'ice', 'dragon'];
+    const coveredTypes = new Set();
+    teamData.forEach(p => p.types.forEach(t => coveredTypes.add(t)));
+    const coverageScore = (coveredTypes.size / importantTypes.length) * 25;
+    score += coverageScore;
+    
+    // 3. Stat distribution (max 25 points)
+    let totalBST = 0;
+    teamData.forEach(p => totalBST += p.baseStatTotal);
+    const avgBST = totalBST / teamData.length;
+    const statScore = Math.min((avgBST / 600) * 25, 25);
+    score += statScore;
+    
+    // 4. Role balance (max 15 points)
+    const roles = identifyRoles(teamData);
+    const hasPhysicalSweeper = roles.physical_sweeper > 0;
+    const hasSpecialSweeper = roles.special_sweeper > 0;
+    const hasWall = roles.wall > 0;
+    let roleScore = 0;
+    if (hasPhysicalSweeper) roleScore += 5;
+    if (hasSpecialSweeper) roleScore += 5;
+    if (hasWall) roleScore += 5;
+    score += roleScore;
+    
+    // 5. Type diversity (max 15 points)
+    const uniqueTypes = new Set();
+    teamData.forEach(p => p.types.forEach(t => uniqueTypes.add(t)));
+    const diversityScore = Math.min((uniqueTypes.size / 10) * 15, 15);
+    score += diversityScore;
+    
+    return Math.round(score);
+}
+
+function identifyRoles(teamData) {
+    const roles = {
+        physical_sweeper: 0,
+        special_sweeper: 0,
+        wall: 0,
+        tank: 0
+    };
+    
+    teamData.forEach(pokemon => {
+        const stats = pokemon.stats.reduce((acc, stat) => {
+            acc[stat.stat.name] = stat.base_stat;
+            return acc;
+        }, {});
+        
+        if (stats['attack'] >= 100 && stats['speed'] >= 80) {
+            roles.physical_sweeper++;
+        }
+        if (stats['special-attack'] >= 100 && stats['speed'] >= 80) {
+            roles.special_sweeper++;
+        }
+        if (stats['hp'] >= 80 && stats['defense'] >= 80 && stats['special-defense'] >= 80) {
+            roles.wall++;
+        }
+        if (stats['hp'] >= 90) {
+            roles.tank++;
+        }
+    });
+    
+    return roles;
+}
+
+function getStrengthRating(score) {
+    if (score >= 90) return { text: 'Excellent', color: '#10b981', emoji: '🌟' };
+    if (score >= 75) return { text: 'Great', color: '#3b82f6', emoji: '⭐' };
+    if (score >= 60) return { text: 'Good', color: '#8b5cf6', emoji: '👍' };
+    if (score >= 40) return { text: 'Average', color: '#f59e0b', emoji: '👌' };
+    return { text: 'Needs Work', color: '#ef4444', emoji: '💪' };
+}
 
 // Calculate defensive matchup
 function calculateDefensiveMatchup(types) {
@@ -122,6 +245,9 @@ function displayPokemon(slotId, pokemon) {
     const imgContainer = container.querySelector('.pokemon-img-container');
     const infoBox = container.querySelector('.pokemon-info');
 
+    // Add pokeball opening effect
+    imgContainer.style.animation = 'pokeballOpen 0.6s ease-out';
+    
     imgContainer.innerHTML = `<img class="pokemon-img" src="${pokemon.sprite}" alt="${pokemon.name}">`;
 
     const statNames = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'];
@@ -269,7 +395,6 @@ function removeSlot(slotId) {
 
 // Render all slots
 function renderSlots() {
-    // Create empty slots
     const container = document.getElementById('slots-container');
     container.innerHTML = slots.map(slot => `
         <div class="slot-box" id="slot-${slot.id}">
@@ -279,9 +404,9 @@ function renderSlots() {
                 </div>
                 <div class="info-box">
                     <div class="input-box">
-                        <input type="text" id="input-${slot.id}" placeholder="Enter Pokémon name..." onkeydown="if(event.key === 'Enter') fetchPokemon(${slot.id})">
-                        <button class="btn btn-search" onclick="fetchPokemon(${slot.id})">Search</button>
-                        ${slots.length > 1 ? `<button class="btn btn-remove" onclick="warningPopup(${slot.id})">✕</button>` : ''}
+                        <input type="text" id="input-${slot.id}" placeholder="Enter Pokémon name..." autocomplete="off">
+                        <button class="btn btn-search" data-slot-id="${slot.id}" data-action="search">Search</button>
+                        ${slots.length > 1 ? `<button class="btn btn-remove" data-slot-id="${slot.id}" data-action="remove">✕</button>` : ''}
                     </div>
                     <div class="pokemon-info"></div>
                 </div>
@@ -289,11 +414,63 @@ function renderSlots() {
         </div>
     `).join('');
 
-    // Display currently-saved Pokemon in slots
+    attachSlotEventListeners();
+
     slots.forEach(slot => {
         if(slot.pokemon != null) {
             displayPokemon(slot.id, slot.pokemon);
         }
+    });
+}
+
+// Attach event listeners to slot buttons
+function attachSlotEventListeners() {
+    // Search buttons
+    document.querySelectorAll('[data-action="search"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const slotId = parseInt(e.target.dataset.slotId);
+            fetchPokemon(slotId);
+        });
+    });
+
+    // Remove buttons
+    document.querySelectorAll('[data-action="remove"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const slotId = parseInt(e.target.dataset.slotId);
+            warningPopup(slotId);
+        });
+    });
+
+    // Input with autocomplete
+    document.querySelectorAll('input[type="text"]').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const value = e.target.value.toLowerCase().trim();
+            if (value.length < 2) {
+                const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
+                if (existingSuggestions) existingSuggestions.remove();
+                return;
+            }
+            
+            const matches = allPokemonNames.filter(name => name.startsWith(value));
+            showAutocompleteSuggestions(input, matches);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const slotId = parseInt(e.target.id.split('-')[1]);
+                const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
+                if (existingSuggestions) existingSuggestions.remove();
+                fetchPokemon(slotId);
+            }
+        });
+
+        // Close suggestions when clicking outside
+        input.addEventListener('blur', (e) => {
+            setTimeout(() => {
+                const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
+                if (existingSuggestions) existingSuggestions.remove();
+            }, 200);
+        });
     });
 }
 
@@ -304,30 +481,16 @@ function updateSlotCount() {
     document.getElementById('slot-count-max').textContent = maxTeamSize;
 }
 
-// Initialize
-renderSlots();
-updateSlotCount();
-
-
-
-//#region Prolog Backend Integration Functions
-
-// PROLOG BACKEND INTEGRATION FUNCTIONS
-// Team recommendation functionality onClick
+// PROLOG BACKEND INTEGRATION
 async function getIntelligentRecommendations() {
-    // const currentTeam = slots
-    //     .filter(slot => slot.pokemon)
-    //     .map(slot => slot.pokemon.name);
     const currentTeam = slots
         .filter(slot => slot.pokemon)
         .map(slot => {
             const p = slot.pokemon;
-
             return {
                 name: p.name,
-                // sprite: p.sprite,
-                types: p.types.map(t => t.type.name), // convert type object to string
-                stats: p.stats.reduce((acc, stat) => {  //adds all the stat values together
+                types: p.types.map(t => t.type.name),
+                stats: p.stats.reduce((acc, stat) => {
                     acc[stat.stat.name] = stat.base_stat;
                     return acc;
                 }, {}),
@@ -336,20 +499,18 @@ async function getIntelligentRecommendations() {
             };
         });
 
-
     if (currentTeam.length === 0) {
         alert('Please add some Pokémon to your team first!');
         return;
     }
 
     try {
-        const response = await fetch('http://localhost:5000/api/analyze', {
+        const response = await fetch('http://127.0.0.1:5000/api/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ team: currentTeam })
-            
         });
 
         const data = await response.json();
@@ -357,108 +518,178 @@ async function getIntelligentRecommendations() {
         
     } catch (error) {
         console.error('Error getting analysis:', error);
-        alert('Error connecting to Prolog backend. Make sure Python server is running on port 5000.');
+        alert('Error connecting to backend. Make sure the server is running.');
     }
 }
 
-// The display after click
 function displayKnowledgeBasedAnalysis(data) {
-    // Remove existing analysis if present
     const existingAnalysis = document.getElementById('knowledge-analysis');
     if (existingAnalysis) {
         existingAnalysis.remove();
     }
     
-    // Create analysis display
+    // Calculate team strength
+    const validPokemon = slots.filter(s => s.pokemon).map(s => s.pokemon);
+    const strengthScore = calculateTeamStrength(validPokemon);
+    const rating = getStrengthRating(strengthScore);
+    
     const analysisDiv = document.createElement('div');
     analysisDiv.id = 'knowledge-analysis';
-    analysisDiv.className = 'team-analysis';
+    analysisDiv.className = 'knowledge-analysis active';
+    
+    let recommendationsHTML = '';
+    if (data.analysis.logic_programming && data.analysis.logic_programming.length > 0) {
+        recommendationsHTML = data.analysis.logic_programming.map(rec => `
+            <div class="recommendation-card">
+                <div class="recommendation-header">
+                    <h4 class="recommendation-pokemon">${rec.pokemon}</h4>
+                    <button class="btn-add-recommended" data-pokemon="${rec.pokemon}" data-action="add-recommended">
+                        + Add
+                    </button>
+                </div>
+                <p class="recommendation-explanation">${rec.explanation}</p>
+            </div>
+        `).join('');
+    } else {
+        recommendationsHTML = '<div class="no-recommendations"><p>✓ No specific recommendations needed. Your team composition looks balanced!</p></div>';
+    }
+    
+    let currentRolesHTML = '';
+    let missingRolesHTML = '';
+    
+    if (data.analysis.planning) {
+        const currentRoles = data.analysis.planning.current_roles || {};
+        if (Object.keys(currentRoles).filter(k => currentRoles[k] > 0).length > 0) {
+            currentRolesHTML = Object.entries(currentRoles)
+                .filter(([role, count]) => count > 0)
+                .map(([role, count]) => `
+                    <div class="role-badge role-filled">
+                        <span class="role-name">${role.replace(/_/g, ' ')}</span>
+                        <span class="role-count">×${count}</span>
+                    </div>
+                `).join('');
+        } else {
+            currentRolesHTML = '<p class="role-empty">No roles identified yet</p>';
+        }
+        
+        const missingRoles = data.analysis.planning.missing_roles || {};
+        if (Object.keys(missingRoles).length > 0) {
+            missingRolesHTML = Object.entries(missingRoles).map(([role, count]) => `
+                <div class="role-badge role-missing">
+                    <span class="role-name">${role.replace(/_/g, ' ')}</span>
+                    <span class="role-count">Need ${count}</span>
+                </div>
+            `).join('');
+        } else {
+            missingRolesHTML = '<p class="role-complete">✓ All required roles filled!</p>';
+        }
+    }
+    
     analysisDiv.innerHTML = `
-        <h2>🧠 Knowledge-Based Team Analysis</h2>
-        
-        <div class="kr-methods">
-            <h3>🧩 Knowledge Representation Methods Used:</h3>
-            <ul>
-                ${data.analysis.knowledge_representation_used.map(method => 
-                    `<li>${method}</li>`
-                ).join('')}
-            </ul>
-        </div>
-        
-        <div class="propositional-logic analysis-section">
-            <h3>📝 Propositional Logic Analysis:</h3>
-            <p><strong>Type Coverage Score:</strong> ${(data.analysis.propositional_logic.score * 100).toFixed(1)}%</p>
-            <div class="coverage-grid">
-                ${Object.entries(data.analysis.propositional_logic.type_coverage).map(([type, covered]) => `
-                    <div class="coverage-item ${covered ? 'covered' : 'missing'}">
-                        <span class="type-badge type-${type}">${type}</span>
-                        <span>${covered ? '✓ Covered' : '✗ Missing'}</span>
-                    </div>
-                `).join('')}
+        <div class="analysis-header">
+            <h2>🧠 Knowledge-Based Team Analysis</h2>
+            <div class="strength-score-container">
+                <div class="strength-label">Team Strength</div>
+                <div class="strength-score" style="color: ${rating.color}">
+                    ${rating.emoji} ${strengthScore}/100
+                </div>
+                <div class="strength-rating" style="color: ${rating.color}">${rating.text}</div>
             </div>
         </div>
         
-        <div class="prolog-recommendations analysis-section">
-            <h3>🤖 Prolog-Based Recommendations:</h3>
-            ${data.analysis.logic_programming.length > 0 ? 
-                data.analysis.logic_programming.map(rec => `
-                    <div class="recommendation-item">
-                        <h4>${rec.pokemon}</h4>
-                        <p>${rec.explanation}</p>
-                        <button class="btn btn-search" onclick="addRecommendedPokemon('${rec.pokemon}')">
-                            Add to Team
-                        </button>
-                    </div>
-                `).join('') :
-                '<p>No specific recommendations needed. Team looks balanced!</p>'
-            }
-        </div>
-        
-        <div class="planning-analysis analysis-section">
-            <h3>📋 Role Planning Analysis:</h3>
-            <div class="role-grid">
-                <div class="role-column">
-                    <h4>Current Roles:</h4>
-                    ${Object.entries(data.analysis.planning.current_roles).map(([role, count]) => `
-                        <div class="role-item">
-                            <span>${role}:</span>
-                            <span class="count-badge">${count}</span>
-                        </div>
-                    `).join('')}
+        <div class="analysis-content">
+            <div class="analysis-card">
+                <div class="card-header">
+                    <h3>🧩 Knowledge Representation Methods</h3>
                 </div>
-                <div class="role-column">
-                    <h4>Missing Roles:</h4>
-                    ${Object.entries(data.analysis.planning.missing_roles).map(([role, count]) => `
-                        <div class="role-item">
-                            <span>${role}:</span>
-                            <span class="count-badge missing">${count} needed</span>
-                        </div>
-                    `).join('')}
+                <div class="card-body">
+                    <div class="methods-grid">
+                        ${data.knowledge_representation_used.map(method => 
+                            `<div class="method-badge">${method}</div>`
+                        ).join('')}
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="explanation analysis-section">
-            <h3>💡 Reasoning Explanation:</h3>
-            <div class="explanation-text">
-                ${data.analysis.explanation}
+            
+            <div class="analysis-card">
+                <div class="card-header">
+                    <h3>🔍 Type Coverage Analysis</h3>
+                    <div class="coverage-score">${(data.analysis.propositional_logic.score * 100).toFixed(0)}%</div>
+                </div>
+                <div class="card-body">
+                    <div class="coverage-grid">
+                        ${Object.entries(data.analysis.propositional_logic.type_coverage).map(([type, covered]) => `
+                            <div class="coverage-badge ${covered ? 'covered' : 'missing'}">
+                                <span class="type-icon-small type-${type}">${type}</span>
+                                <span class="coverage-status">${covered ? '✓' : '✗'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="analysis-card">
+                <div class="card-header">
+                    <h3>🤖 Recommended Pokémon</h3>
+                </div>
+                <div class="card-body">
+                    ${recommendationsHTML}
+                </div>
+            </div>
+            
+            <div class="analysis-card">
+                <div class="card-header">
+                    <h3>📋 Team Role Distribution</h3>
+                </div>
+                <div class="card-body">
+                    <div class="roles-section">
+                        <div class="roles-column">
+                            <h4 class="roles-subtitle">Current Roles</h4>
+                            <div class="roles-list">
+                                ${currentRolesHTML}
+                            </div>
+                        </div>
+                        <div class="roles-column">
+                            <h4 class="roles-subtitle">Missing Roles</h4>
+                            <div class="roles-list">
+                                ${missingRolesHTML}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="analysis-card">
+                <div class="card-header">
+                    <h3>💡 Detailed Reasoning</h3>
+                </div>
+                <div class="card-body">
+                    <div class="explanation-box">
+                        ${data.analysis.explanation.split('\n').map(line => 
+                            line.trim() ? `<p>${line}</p>` : ''
+                        ).join('')}
+                    </div>
+                </div>
             </div>
         </div>
     `;
     
-    // Insert after team analysis
     const teamAnalysis = document.getElementById('team-analysis');
     teamAnalysis.parentNode.insertBefore(analysisDiv, teamAnalysis.nextSibling);
-    
-    // Show the analysis
-    analysisDiv.classList.add('active');
+
+    // Attach event listeners to recommendation buttons
+    document.querySelectorAll('[data-action="add-recommended"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const pokemonName = e.target.dataset.pokemon;
+            addRecommendedPokemon(pokemonName);
+        });
+    });
 }
 
 function addRecommendedPokemon(pokemonName) {
-    // Find first empty slot or create new one
     let emptySlot = slots.find(slot => !slot.pokemon);
     
-    if (!emptySlot && slots.length < 6) {
+    if (!emptySlot && slots.length < maxTeamSize) {
         addSlot();
         emptySlot = slots[slots.length - 1];
     }
@@ -472,24 +703,20 @@ function addRecommendedPokemon(pokemonName) {
     }
 }
 
-// Add recommendation button to UI
-// function addKnowledgeFeatures() {
-//     // Add intelligent analysis button
-//     const addBtn = document.getElementById('add-slot-btn');
-//     const smartBtn = document.createElement('button');
-//     smartBtn.className = 'btn btn-add';
-//     smartBtn.style.background = '#8b5cf6';
-//     smartBtn.style.marginBottom = '10px';
-//     smartBtn.innerHTML = '🧠 Get Intelligent Analysis (Prolog)';
-//     smartBtn.onclick = getIntelligentRecommendations;
+// Initialize on load
+window.addEventListener('DOMContentLoaded', () => {
+    console.log('Initializing Pokemon Team Builder...');
     
-//     addBtn.parentNode.insertBefore(smartBtn, addBtn);
-// }
+    // Load Pokemon names for autocomplete
+    loadPokemonNames();
+    
+    // Initial render
+    renderSlots();
+    updateSlotCount();
 
-// Call on page load
-// document.addEventListener('DOMContentLoaded', function () {
-//     const smartBtn = document.getElementById('analysis-btn');
-//     smartBtn.onclick = getIntelligentRecommendations;
-// });
+    // Attach main button listeners
+    document.getElementById('add-slot-btn').addEventListener('click', addSlot);
+    document.getElementById('analysis-btn').addEventListener('click', getIntelligentRecommendations);
 
-//#endregion
+    console.log('✓ Team Builder initialized');
+});

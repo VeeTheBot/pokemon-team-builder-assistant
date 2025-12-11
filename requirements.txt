@@ -1,0 +1,5 @@
+flask==3.0.0
+flask-cors==4.0.0
+pyswip==0.2.10
+requests==2.31.0
+pandas==2.1.4

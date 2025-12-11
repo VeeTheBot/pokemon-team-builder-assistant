@@ -12,9 +12,8 @@
     <link href="pokemon.css" rel="stylesheet" type="text/css" media="all">
     <link href="warning_popup.css" rel="stylesheet" type="text/css" media="all">
 
-    <script src="pokemon.js" type="text/javascript" defer></script>
-    <script src="types.js" type="text/javascript" rel="preload"></script>
-    <script src="warning_popup.js" type="text/javascript" defer></script>
+    <!-- Load types.js first without defer -->
+    <script src="types.js" type="text/javascript"></script>
 </head>
 <body>
     <div class="container">
@@ -41,13 +40,17 @@
 
         <div id="slots-container"></div>
 
-        <button class="btn btn-add" id="add-slot-btn" onclick="addSlot()">
+        <button class="btn btn-add" id="add-slot-btn">
             ➕ Add Pokémon Slot (<span id="slot-count">1</span>/<span id="slot-count-max">5</span>)
         </button>
 
-        <button class="btn btn-eval" id="analysis-btn" onclick="getIntelligentRecommendations()">
+        <button class="btn btn-eval" id="analysis-btn">
             Get Prolog Analysis 🛠️
         </button>
     </div>
+
+    <!-- Load other scripts after DOM -->
+    <script src="pokemon.js" type="text/javascript"></script>
+    <script src="warning_popup.js" type="text/javascript"></script>
 </body>
 </html>
