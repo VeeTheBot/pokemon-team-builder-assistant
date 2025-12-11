@@ -1,5 +1,5 @@
 /*
-    Authors: Zhengyao Huang, Manhattan Calabro
+    Authors: Zhengyao Huang, Manhattan Calabro, Brian Phung
 */
 
 /*
@@ -684,6 +684,9 @@ function displayKnowledgeBasedAnalysis(data) {
             addRecommendedPokemon(pokemonName);
         });
     });
+
+    // Scroll to the knowledge-based analysis section
+    analysisDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function addRecommendedPokemon(pokemonName) {
