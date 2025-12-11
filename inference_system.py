@@ -15,44 +15,87 @@ prolog.consult("team_rules.pl")
 class PokemonTeamAdvisor:
     def __init__(self):
         self.pokeapi_base = "https://pokeapi.co/api/v2/"
-        # self.smogon_data = self.load_smogon_data()
+        self.smogon_data = self.load_smogon_data()
     
     # API data: Consider loading immediately or JSON on hand
     def get_pokemon_data(self, name):
         """Fetch Pokémon data from PokeAPI"""
+        # print("get_pokemon_data: Success!")
         try:
             response = requests.get(f"{self.pokeapi_base}pokemon/{name.lower()}")
             if response.status_code == 200:
-                print("Success!")
                 data = response.json()
-                return {
+                parsed = {
                     'name': data['name'],
                     'types': [t['type']['name'] for t in data['types']],
                     'stats': {s['stat']['name']: s['base_stat'] for s in data['stats']}
                 }
+                return parsed
         except:
             pass
         return None
     
+    def load_smogon_data(self):
+        """Load competitive Pokémon data from Smogon CSV/JSON"""
+        try:
+            with open("gen9ou.json", "r", encoding="utf8") as f:
+                smogon_data = json.load(f)
+                return smogon_data  
+        except:
+            print("No sets found.")
+           
+    def normalize(self, s):
+        return s.lower().replace(" ", "").replace("-", "").replace(".", "")
+
+    def get_full_pokemon_entry(self, name):
+        """
+        Returns a complete dataset:
+        - Types
+        - Base Stats
+        - Smogon Competitive Sets
+        """
+        name_key = self.normalize(name)
+
+        # Fetch pokédex info
+        species = self.get_pokemon_data(name_key)
+        if species is None:
+            return None
+
+        # Load Smogon data
+        smogon = self.smogon_data
+
+        # Smogon might have names with caps, spaces, etc.
+        matched_smogon = None
+        
+        # Look for matches between PokeAPI and the Smogon set and merge data
+        for sm_name in smogon:
+            if self.normalize(sm_name) == name_key:
+                matched_smogon = smogon[sm_name]
+                break
+
+        # Extract only the set names (roles)
+        roles = list(matched_smogon.keys()) if matched_smogon else []
     
-    # def load_smogon_data(self):
-    #     """Load competitive Pokémon data from Smogon CSV/JSON"""
-    #     try:
-    #         # Example: Load Smogon usage stats
-    #         df = pd.read_csv('smogon_usage_stats.csv')
-    #         return df.to_dict('records')
-    #     except:
-    #         # Fallback: Use curated competitive knowledge
-    #         return {
-    #             'metagame_roles': {
-    #                 'toxapex': ['wall', 'hazard_setter'],
-    #                 'dragapult': ['special_sweeper', 'physical_sweeper'],
-    #                 'ferrothorn': ['wall', 'hazard_setter'],
-    #                 # ... more competitive knowledge
-    #             },
-    #             'viable_pokemon': ['clefable', 'heatran', 'landorus-therian', 'rillaboom']
-    #         }
+        # Build combined dictionary
+        return {
+            "name": species["name"],
+            "types": species["types"],
+            "stats": species["stats"],
+            "smogon_roles": roles
+        }
     
+    # Gets smogon pool of Gen9 OU only    
+    def get_many_entries(self):
+        smogon = self.smogon_data
+        results = []
+
+        # Call only Pokemon in the Gen9OU set
+        for sm_name in smogon:
+            entry = self.get_full_pokemon_entry(sm_name)
+            if entry is not None:
+                results.append(entry)
+        print("ALL SMOGON sets: ", results)
+        return results
     
      # Helper to Prolog recommendations.
      # Convert data to Prolog
@@ -75,100 +118,88 @@ class PokemonTeamAdvisor:
                 
             # Types
             for t in pokemon['types']:
-                prolog.assertz(f"has_type('{name}', {t})")
+                prolog.assertz(f"has_type('{name}', '{t}')")
 
-                print(f"has_type({name}, {t})")
+                print(f"has_type({name}, '{t}')")
+    
+    def load_smogon_pool_into_prolog(self):
+        prolog.retractall("smogon_pool(_,_,_)")
+
+        entries = self.get_many_entries()
+        for entry in entries:
+            name = entry["name"]
+            types = entry["types"]
+            roles = entry["smogon_roles"]
+
+            # Convert Python lists → Prolog lists
+            types_list = "[" + ",".join([f"'{t}'" for t in types]) + "]"
+            roles_list = "[" + ",".join([f"'{r}'" for r in roles]) + "]"
+
+            prolog.assertz(f"smogon_pool('{name}', {types_list}, {roles_list})")
+           
                 
-                
-    def prolog_recommendations(self, team_data):
-        """Use Prolog for intelligent recommendations"""
-        # Convert team to Prolog facts
+    # def prolog_analysis(self, team_data):
+    #     """Use Prolog for intelligent recommendations"""
+    #     # Convert team to Prolog facts
+    #     self.add_team_to_prolog(team_data)
+        
+    #     # Query for recommendations
+    #     recommendations = []
+    #     query = "recommend_pokemon(CurrentTeam, Pokemon, Explanation)"
+    #     for result in prolog.query(query):
+    #         recommendations.append({
+    #             'pokemon': result['Pokemon'],
+    #             'explanation': result['Explanation']
+    #             # 'confidence': 0.8  # Could be calculated
+    #         })
+    #     return recommendations
+
+    def prolog_analysis(self, team_data):
         self.add_team_to_prolog(team_data)
-        
-        # Query for recommendations
-        recommendations = []
-        query = "recommend_pokemon(CurrentTeam, Pokemon, Explanation)"
-        for result in prolog.query(query):
-            recommendations.append({
-                'pokemon': result['Pokemon'],
-                'explanation': result['Explanation']
-                # 'confidence': 0.8  # Could be calculated
-            })
-        return recommendations
-    
-    
-    def propositional_analysis(self, team_data):
-        """Apply propositional logic rules to team"""
-        # Rule: Team should have at least half the important type coverage
-        important_types = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water']
-        coverage = {}
-        
-        # look at team members, look at their types, see if they are covered.
-        # so T/F values
-        for p_type in important_types:
-            coverage[p_type] = any(
-                p_type in pokemon['types']
-                for pokemon in team_data
-            )
-        # Ex: coverage["ice"] = True    
-        # print(coverage)
+
+        missing_types = [r["T"] for r in prolog.query("missing_type(T)")]
+        missing_roles = [r["R"] for r in prolog.query("missing_role(R)")]
+
+        recommendations = [
+            {
+                "pokemon": row["Poke"],
+                "explanation": row["Explanation"]
+            }
+            for row in prolog.query("recommend_pokemon(CurrentTeam, Poke, Explanation)")
+        ]
+
         return {
-            'type_coverage': coverage,
-            # 1/6 +1/6 etc
-            'score': sum(1 for covered in coverage.values() if covered) / len(important_types)
+            "missing_types": missing_types,
+            "missing_roles": missing_roles,
+            "recommendations": recommendations
         }
-      
-    # def role_planning(self, team_data):
-    #     """PDDL-like planning for team roles"""
-    #     required_roles = {
-    #         'sweeper': 2,
-    #         'wall': 2,
-    #         'support': 1,
-    #         'revenge_killer': 1
-    #     }
+
+    
+    # def propositional_analysis(self, team_data):
+    #     """Apply propositional logic rules to team"""
+    #     # Rule: Team should have at least half the important type coverage
+    #     important_types = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water']
+    #     coverage = {}
         
-    #    # Simple planning: count current roles, suggest missing ones
-    #     current_roles = self.identify_roles(team_data)
-    #     missing_roles = {}
-        
-    #     for role, count in required_roles.items():
-    #         current = current_roles.get(role, 0)
-    #         if current < count:
-    #             missing_roles[role] = count - current
-        
+    #     # look at team members, look at their types, see if they are covered.
+    #     # so T/F values
+    #     for p_type in important_types:
+    #         coverage[p_type] = any(
+    #             p_type in pokemon['types']
+    #             for pokemon in team_data
+    #         )
+    #     # Ex: coverage["ice"] = True    
+    #     # print(coverage)
     #     return {
-    #         'current_roles': current_roles,
-    #         'missing_roles': missing_roles,
-    #         'plan': f"Add {missing_roles} to complete team composition"
+    #         'type_coverage': coverage,
+    #         # 1/6 +1/6 etc
+    #         'score': sum(1 for covered in coverage.values() if covered) / len(important_types)
     #     }
-    
-    # def generate_explanation(self, team_data):
-    #     """Generate natural language explanation of reasoning"""
-    #     weaknesses = self.calculate_weaknesses(team_data)
-    #     strengths = self.calculate_strengths(team_data)
-        
-    #     explanation = f"""
-    #     Based on competitive Pokémon knowledge:
-        
-    #     Your team has {len(weaknesses)} major weaknesses: {', '.join(weaknesses[:3])}
-    #     Your team's strengths include: {', '.join(strengths[:3])}
-        
-    #     Recommendation logic applied:
-    #     1. Type coverage analysis (Propositional Logic)
-    #     2. Defensive synergy checking (Logic Programming)
-    #     3. Role composition planning (Planning Concepts)
-    #     4. Competitive viability (Ontology-based reasoning)
-    #     """
-        
-    #     return explanation
-    
+      
     def analyze_team(self, team_data):
         """Comprehensive team analysis using multiple KR techniques"""
         analysis = {
-            'propositional_logic': self.propositional_analysis(team_data),
-            'logic_programming': self.prolog_recommendations(team_data),
-            # 'planning': self.role_planning(team_data),
-            # 'explanation': self.generate_explanation(team_data)
+            'Prolog analysis': self.prolog_analysis(team_data)
         }
         return analysis
     
@@ -181,17 +212,10 @@ def analyze_team():
     print(f"Payload: {team_data}")
     advisor = PokemonTeamAdvisor()
     
+    advisor.get_many_entries()
+    advisor.load_smogon_pool_into_prolog()
     
-    """API: Fetch detailed data for each Pokémon"""
-    # team_data = []
-    # for name in team_names:
-    #     print(name)
-    #     pokemon_data = advisor.get_pokemon_data(name)
-    #     if pokemon_data:
-    #         team_data.append(pokemon_data)
-    
-    # Perform comprehensive analysis (combined 4 functions)
-    # other file uses .py rules and puts in recommendations, team_data
+    # Perform comprehensive analysis 
     analysis = advisor.analyze_team(team_data)
     
     # Uses a pipeline that gens suggestion, calc coverage, calc roles, then jsonify

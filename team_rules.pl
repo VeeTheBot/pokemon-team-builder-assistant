@@ -1,128 +1,77 @@
-% Knowledge Representation: Competitive Pokémon Rules
-% Based on Smogon competitive strategies
+%% TEAM BUILDER — ROLE CLASSIFICATION + TEAM CHECKS
 
-offensive_pokemon(P) :-
-    base_stat(P, attack, A),
-    base_stat(P, speed, S),
-    A >= 110,
-    S >= 95.
 
-offensive_pokemon(P) :-
-    base_stat(P, special_attack, SpA),
-    base_stat(P, speed, S),
-    SpA >= 110,
-    S >= 95.
+%% Facts dynamically loaded from Python:
+%%   current_pokemon(Name)
+%%   base_stat(Name, Stat, Value)
+%%   has_type(Name, Type)
 
-wall(P) :- 
-    base_stat(P, health, HP),
-    base_stat(P, defense, D),
-    base_stat(P, special_defense, SpD),
-    HP >= 80,
-    D >= 80,
-    SpD >= 80.
 
-% Rule 1: Type Coverage (Propositional Logic)
-% needs_offensive_coverage(Team, Type) :-
-%     important_coverage_type(Type),
-%     \+ team_covers_type(Team, Type).
+%% ROLE RULES (BASED ONLY ON BASE STATS)
+role(P, sweeper) :-
+    base_stat(P, speed, S), S >= 100,
+    base_stat(P, attack, A), A >= 110.
 
-important_coverage_type(fighting).
-important_coverage_type(ground).
-important_coverage_type(steel).
-important_coverage_type(fairy).
-important_coverage_type(fire).
-important_coverage_type(water).
+role(P, special_sweeper) :-
+    base_stat(P, speed, S), S >= 100,
+    base_stat(P, 'special-attack', SA), SA >= 110.
 
-% Offensive Synergy
-% team_covers_type(Team, Type)
-% True if at least one Pokémon in Team has coverage against TargetType.
-% team_covers_type(Team, TargetType) :-
-%     member(Pokemon, Team),
-%     has_move(Pokemon, Move),
-%     move_hits_super_effectively(Move, TargetType).
+role(P, tank) :-
+    base_stat(P, defense, D), D >= 100,
+    base_stat(P, hp, HP), HP >= 90.
 
-% team_covers_type(Team, Type)
-% True if at least one Pokémon in Team has coverage against TargetType.
-team_covers_type(Team, Type) :-
-    member(Pokemon, Team),
-    has_type(Pokemon, Type).
+role(P, special_tank) :-
+    base_stat(P, 'special-defense', SD), SD >= 100,
+    base_stat(P, hp, HP), HP >= 90.
 
-% Rule 2: Defensive Synergy (Logic Programming)
-% team_weak_against(Team, AttackType, Severity) :-
-%     findall(Mult, (member(P, Team), pokemon_weakness(P, AttackType, Mult)), Multipliers),
-%     sum_list(Multipliers, Total),
-%     length(Team, Len),
-%     Len > 0,
-%     Severity is Total / Len.
+role(P, bulky_attacker) :-
+    base_stat(P, attack, A), A >= 100,
+    base_stat(P, hp, HP), HP >= 80.
 
-% Rule 3: Role Balance (Planning Concepts)
-has_role_match(Role, Pokemon) :-
-    has_role(Pokemon, Role).
+role(P, support) :-
+    base_stat(P, speed, S), S < 90,
+    base_stat(P, hp, HP), HP >= 70.
 
-count_role(Team, Role, Count) :-
-    include(has_role_match(Role), Team, Filtered),
-    length(Filtered, Count).
+%% Fallback: if no role matches → generalist
+role(P, generalist) :-
+    \+ role(P, sweeper),
+    \+ role(P, special_sweeper),
+    \+ role(P, tank),
+    \+ role(P, special_tank),
+    \+ role(P, bulky_attacker),
+    \+ role(P, support).
 
-needs_role(Team, Role) :-
-    required_role(Role),
-    count_role(Team, Role, Count),
-    required_count(Role, Min),
-    Count < Min.
-    
-required_role(physical_sweeper).
-required_role(special_sweeper).
-required_role(wall).
 
-required_count(physical_sweeper, 1).
-required_count(special_sweeper, 1).
-required_count(wall, 1).
+%% TEAM ANALYSIS
+%% Required roles
+required_roles([sweeper, tank, support]).
 
-% Rule 4: Team Archetype (Ontology-like structure)
-has_role_count(Team, Role, N) :-
-    count_role(Team, Role, N).
+current_role_list(Roles) :-
+    findall(R, (current_pokemon(P), role(P, R)), Roles).
 
-team_archetype(Team, balanced) :-
-    has_role_count(Team, physical_sweeper, 1),
-    has_role_count(Team, special_sweeper, 1),
-    has_role_count(Team, wall, 2).
+missing_role(R) :-
+    required_roles(Req),
+    member(R, Req),
+    \+ (current_pokemon(P), role(P,R)).
 
-team_archetype(Team, hyper_offense) :-
-    forall(member(P, Team), offensive_pokemon(P)).
 
-% Rule 5: Recommendation with Explanation
-% recommend_pokemon(Team, Pokemon, Explanation) :-
-%     % Multiple possible explanations
-%     (needs_offensive_coverage(Team, Type), has_type(Pokemon, Type)) ->
-%         format(atom(Explanation), 'Provides ~w coverage', [Type])
-%     ; (team_weak_against(Team, AttackType, Severity), Severity > 2,
-%        resists_type(Pokemon, AttackType)) ->
-%         format(atom(Explanation), 'Resists team weakness to ~w (severity: ~1f)', [AttackType, Severity])
-%     ; (needs_role(Team, Role), has_role(Pokemon, Role)) ->
-%         format(atom(Explanation), 'Fills ~w role', [Role])
-%     ; Explanation = 'Good team synergy'.
+%% TYPE COVERAGE CHECKS
+required_types([fire, water, grass, ground, fairy, steel]).
 
-    recommend_pokemon(Team, Pokemon, Explanation) :-
+missing_type(T) :-
+    required_types(Req),
+    member(T, Req),
+    \+ (current_pokemon(P), has_type(P, T)).
 
-    % 1. Missing type coverage
-    (needs_offensive_coverage(Team, Type),
-     has_type(Pokemon, Type))
-    ->
-    format(atom(Explanation), 'Provides ~w coverage', [Type])
+%% RECOMMENDATION ENGINE
+recommend_pokemon(CurrentTeam, Poke, Explanation) :-
+    smogon_pool(Poke, Types, Roles),
+    missing_role(R),
+    member(R, Roles),
+    Explanation = ['Fills missing role ', R].
 
-    % 2. Patch weaknesses
-    ; (team_weak_against(Team, AttackType, Severity),
-       Severity > 2,
-       resists_type(Pokemon, AttackType))
-    ->
-    format(atom(Explanation), 
-           'Resists team weakness to ~w (severity: ~1f)', 
-           [AttackType, Severity])
-
-    % 3. Missing roles
-    ; (needs_role(Team, Role),
-       has_role(Pokemon, Role))
-    ->
-    format(atom(Explanation), 'Fills ~w role', [Role])
-
-    % 4. Default
-    ; Explanation = 'Good team synergy'.
+recommend_pokemon(CurrentTeam, Poke, Explanation) :-
+    smogon_pool(Poke, Types, _),
+    missing_type(T),
+    member(T, Types),
+    Explanation = ['Provides missing type ', T].
