@@ -27,7 +27,7 @@ const typeChart = {
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
-const maxTeamSize = 5;
+const maxTeamSize = 6;
 let allPokemonNames = []; // For autocomplete
 
 // Load all Pokemon names for autocomplete
