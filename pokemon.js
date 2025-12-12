@@ -27,7 +27,7 @@ const typeChart = {
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
-const maxTeamSize = 5;
+const maxTeamSize = 6;
 let allPokemonNames = []; // For autocomplete
 
 // Load all Pokemon names for autocomplete
@@ -44,7 +44,7 @@ async function loadPokemonNames() {
 
 // Show autocomplete suggestions
 function showAutocompleteSuggestions(input, suggestions) {
-    // Remove existing suggestions
+    // Remove existing suggestions and cleanup old handler
     const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
     if (existingSuggestions) {
         existingSuggestions.remove();
@@ -54,21 +54,69 @@ function showAutocompleteSuggestions(input, suggestions) {
 
     const suggestionsDiv = document.createElement('div');
     suggestionsDiv.className = 'autocomplete-suggestions';
+    suggestionsDiv.dataset.selectedIndex = '-1';
     
-    suggestions.slice(0, 8).forEach(name => {
+    suggestions.slice(0, 8).forEach((name, index) => {
         const suggestionItem = document.createElement('div');
         suggestionItem.className = 'autocomplete-item';
         suggestionItem.textContent = name;
+        suggestionItem.dataset.index = index;
+        
+        // Left click
         suggestionItem.addEventListener('click', () => {
-            input.value = name;
-            suggestionsDiv.remove();
-            const slotId = parseInt(input.id.split('-')[1]);
-            fetchPokemon(slotId);
+            selectSuggestion(input, name, suggestionsDiv);
         });
+        
+        // Middle click (auxclick event with button 1)
+        suggestionItem.addEventListener('auxclick', (e) => {
+            if (e.button === 1) { // Middle mouse button
+                e.preventDefault();
+                selectSuggestion(input, name, suggestionsDiv);
+            }
+        });
+        
+        // Prevent middle click default behavior
+        suggestionItem.addEventListener('mousedown', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+            }
+        });
+        
         suggestionsDiv.appendChild(suggestionItem);
     });
 
     input.parentElement.appendChild(suggestionsDiv);
+}
+
+// Helper function to select a suggestion
+function selectSuggestion(input, name, suggestionsDiv) {
+    input.value = name;
+    suggestionsDiv.remove();
+    const slotId = parseInt(input.id.split('-')[1]);
+    fetchPokemon(slotId);
+}
+
+// Helper function to update visual selection and scroll into view
+function updateSelection(items, selectedIndex) {
+    items.forEach((item, index) => {
+        if (index === selectedIndex) {
+            item.classList.add('selected');
+            // Scroll the selected item into view
+            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+// Get currently selected index from autocomplete
+function getSelectedIndex(suggestionsDiv) {
+    return parseInt(suggestionsDiv.dataset.selectedIndex || '-1');
+}
+
+// Set selected index on autocomplete
+function setSelectedIndex(suggestionsDiv, index) {
+    suggestionsDiv.dataset.selectedIndex = index.toString();
 }
 
 // Calculate team strength score
@@ -84,7 +132,7 @@ function calculateTeamStrength(teamData) {
     const importantTypes = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water', 'ice', 'dragon'];
     const coveredTypes = new Set();
     teamData.forEach(p => p.types.forEach(t => coveredTypes.add(t)));
-    const coverageScore = (coveredTypes.size / importantTypes.length) * 25;
+    const coverageScore = Math.min((coveredTypes.size / importantTypes.length) * 25, 25);
     score += coverageScore;
     
     // 3. Stat distribution (max 25 points)
@@ -111,7 +159,8 @@ function calculateTeamStrength(teamData) {
     const diversityScore = Math.min((uniqueTypes.size / 10) * 15, 15);
     score += diversityScore;
     
-    return Math.round(score);
+    // Cap at 100
+    return Math.min(Math.round(score), 100);
 }
 
 function identifyRoles(teamData) {
@@ -385,7 +434,17 @@ function addSlot() {
 
 // Remove slot
 function removeSlot(slotId) {
-    if (slots.length <= 1) return;
+    // Allow deleting even the last slot - just clear it instead
+    if (slots.length <= 1) {
+        // Clear the last slot instead of removing it
+        const slot = slots.find(s => s.id === slotId);
+        if (slot) {
+            slot.pokemon = null;
+            renderSlots();
+            updateTeamAnalysis();
+        }
+        return;
+    }
     
     slots = slots.filter(s => s.id !== slotId);
     renderSlots();
@@ -406,7 +465,7 @@ function renderSlots() {
                     <div class="input-box">
                         <input type="text" id="input-${slot.id}" placeholder="Enter Pokémon name..." autocomplete="off">
                         <button class="btn btn-search" data-slot-id="${slot.id}" data-action="search">Search</button>
-                        ${slots.length > 1 ? `<button class="btn btn-remove" data-slot-id="${slot.id}" data-action="remove">✕</button>` : ''}
+                        <button class="btn btn-remove" data-slot-id="${slot.id}" data-action="remove">✕</button>
                     </div>
                     <div class="pokemon-info"></div>
                 </div>
@@ -456,10 +515,45 @@ function attachSlotEventListeners() {
         });
 
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
+            const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
+            
+            if (existingSuggestions) {
+                const items = existingSuggestions.querySelectorAll('.autocomplete-item');
+                let selectedIndex = getSelectedIndex(existingSuggestions);
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                    setSelectedIndex(existingSuggestions, selectedIndex);
+                    updateSelection(items, selectedIndex);
+                    return;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    selectedIndex = Math.max(selectedIndex - 1, 0);
+                    setSelectedIndex(existingSuggestions, selectedIndex);
+                    updateSelection(items, selectedIndex);
+                    return;
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    existingSuggestions.remove();
+                    return;
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // If there's a selected item, use it
+                    if (selectedIndex >= 0 && items[selectedIndex]) {
+                        input.value = items[selectedIndex].textContent;
+                    } else if (items.length > 0) {
+                        // Otherwise use first suggestion
+                        input.value = items[0].textContent;
+                    }
+                    existingSuggestions.remove();
+                    const slotId = parseInt(input.id.split('-')[1]);
+                    fetchPokemon(slotId);
+                    return;
+                }
+            } else if (e.key === 'Enter') {
+                // No autocomplete open, just search directly
                 const slotId = parseInt(e.target.id.split('-')[1]);
-                const existingSuggestions = input.parentElement.querySelector('.autocomplete-suggestions');
-                if (existingSuggestions) existingSuggestions.remove();
                 fetchPokemon(slotId);
             }
         });
@@ -539,17 +633,33 @@ function displayKnowledgeBasedAnalysis(data) {
     
     let recommendationsHTML = '';
     if (data.analysis.logic_programming && data.analysis.logic_programming.length > 0) {
-        recommendationsHTML = data.analysis.logic_programming.map(rec => `
+        recommendationsHTML = data.analysis.logic_programming.map(rec => {
+            // Convert pokemon name to proper format for PokeAPI sprite URL
+            const pokemonName = rec.pokemon.toLowerCase().replace(/_/g, '-');
+            const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${getPokemonIdFromName(pokemonName)}.png`;
+            const officialArtUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${getPokemonIdFromName(pokemonName)}.png`;
+            
+            return `
             <div class="recommendation-card">
-                <div class="recommendation-header">
-                    <h4 class="recommendation-pokemon">${rec.pokemon}</h4>
-                    <button class="btn-add-recommended" data-pokemon="${rec.pokemon}" data-action="add-recommended">
-                        + Add
-                    </button>
+                <div class="recommendation-content">
+                    <div class="recommendation-img-container">
+                        <img src="${officialArtUrl}" 
+                             alt="${rec.pokemon}" 
+                             class="recommendation-img"
+                             onerror="this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/0.png'">
+                    </div>
+                    <div class="recommendation-info">
+                        <div class="recommendation-header">
+                            <h4 class="recommendation-pokemon">${rec.pokemon}</h4>
+                            <button class="btn-add-recommended" data-pokemon="${rec.pokemon}" data-action="add-recommended">
+                                + Add
+                            </button>
+                        </div>
+                        <p class="recommendation-explanation">${rec.explanation}</p>
+                    </div>
                 </div>
-                <p class="recommendation-explanation">${rec.explanation}</p>
             </div>
-        `).join('');
+        `}).join('');
     } else {
         recommendationsHTML = '<div class="no-recommendations"><p>✓ No specific recommendations needed. Your team composition looks balanced!</p></div>';
     }
@@ -696,11 +806,117 @@ function addRecommendedPokemon(pokemonName) {
     
     if (emptySlot) {
         const input = document.getElementById(`input-${emptySlot.id}`);
-        input.value = pokemonName;
+        // Convert underscore to hyphen for PokeAPI compatibility
+        const formattedName = pokemonName.toLowerCase().replace(/_/g, '-');
+        input.value = formattedName;
         fetchPokemon(emptySlot.id);
     } else {
         alert('Team is full! Remove a Pokémon first.');
     }
+}
+
+// Pokemon name to ID mapping for common competitive Pokemon
+const pokemonIdMap = {
+    'garchomp': 445,
+    'dragapult': 887,
+    'dragonite': 149,
+    'tyranitar': 248,
+    'kingambit': 983,
+    'gholdengo': 1000,
+    'great_tusk': 984,
+    'great-tusk': 984,
+    'iron_valiant': 1006,
+    'iron-valiant': 1006,
+    'iron_treads': 990,
+    'iron-treads': 990,
+    'flutter_mane': 987,
+    'flutter-mane': 987,
+    'chi_yu': 1004,
+    'chi-yu': 1004,
+    'chien_pao': 1002,
+    'chien-pao': 1002,
+    'ting_lu': 1003,
+    'ting-lu': 1003,
+    'roaring_moon': 1005,
+    'roaring-moon': 1005,
+    'clefable': 36,
+    'toxapex': 748,
+    'ferrothorn': 598,
+    'corviknight': 823,
+    'volcarona': 637,
+    'weavile': 461,
+    'excadrill': 530,
+    'heatran': 485,
+    'landorus': 645,
+    'scizor': 212,
+    'gengar': 94,
+    'lucario': 448,
+    'azumarill': 184,
+    'slowking': 199,
+    'machamp': 68,
+    'annihilape': 979,
+    'baxcalibur': 998,
+    'skeledirge': 911,
+    'meowscarada': 908,
+    'quaquaval': 914,
+    'garganacl': 934,
+    'ceruledge': 937,
+    'armarouge': 936,
+    'palafin': 964,
+    'dondozo': 977,
+    'clodsire': 980,
+    'glimmora': 970,
+    'salamence': 373,
+    'hydreigon': 635,
+    'goodra': 706,
+    'haxorus': 612,
+    'latios': 381,
+    'latias': 380,
+    'grimmsnarl': 861,
+    'hatterene': 858,
+    'gyarados': 130,
+    'pelipper': 279,
+    'swampert': 260,
+    'greninja': 658,
+    'blaziken': 257,
+    'cinderace': 815,
+    'infernape': 392,
+    'charizard': 6,
+    'magnezone': 462,
+    'rillaboom': 812,
+    'venusaur': 3,
+    'tangrowth': 465,
+    'amoonguss': 591,
+    'kartana': 798,
+    'serperior': 497,
+    'mamoswine': 473,
+    'cloyster': 91,
+    'chandelure': 609,
+    'mimikyu': 778,
+    'aegislash': 681,
+    'alakazam': 65,
+    'gardevoir': 282,
+    'medicham': 308,
+    'conkeldurr': 534,
+    'hawlucha': 701,
+    'breloom': 286,
+    'heracross': 214,
+};
+
+// Get Pokemon ID from name (for sprite URLs)
+function getPokemonIdFromName(name) {
+    const normalizedName = name.toLowerCase().replace(/_/g, '-');
+    
+    // Check our mapping first
+    if (pokemonIdMap[name]) {
+        return pokemonIdMap[name];
+    }
+    if (pokemonIdMap[normalizedName]) {
+        return pokemonIdMap[normalizedName];
+    }
+    
+    // Default fallback - return 0 (will show missing image)
+    return 0;
 }
 
 // Initialize on load
