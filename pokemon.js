@@ -1,5 +1,5 @@
 /*
-    Authors: Zhengyao Huang, Manhattan Calabro, Brian Phung
+    Authors: Zhengyao Huang, Manhattan Calabro
 */
 
 /*
@@ -27,7 +27,7 @@ const typeChart = {
 
 let slots = [{ id: 1, pokemon: null }];
 let nextId = 2;
-const maxTeamSize = 6;
+const maxTeamSize = 5;
 let allPokemonNames = []; // For autocomplete
 
 // Load all Pokemon names for autocomplete
@@ -684,9 +684,6 @@ function displayKnowledgeBasedAnalysis(data) {
             addRecommendedPokemon(pokemonName);
         });
     });
-
-    // Scroll to the knowledge-based analysis section
-    analysisDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function addRecommendedPokemon(pokemonName) {

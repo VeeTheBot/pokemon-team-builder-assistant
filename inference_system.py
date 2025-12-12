@@ -1,12 +1,10 @@
-# Authors: Zhengyao Huang, Brian Phung
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
-import pandas as pd
 import json
 import os
 import sys
+import subprocess
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
@@ -15,32 +13,75 @@ CORS(app)
 PROLOG_AVAILABLE = False
 prolog = None
 
-try:
-    from pyswip import Prolog
-    # Wrap Prolog initialization in try-catch
+print("=" * 60)
+print("Attempting to load Prolog...")
+print("=" * 60)
+
+def test_swipl_installation():
+    """Test if SWI-Prolog is properly installed and accessible"""
     try:
-        prolog = Prolog()
-        # Try to consult the file
-        if os.path.exists("team_rules.pl"):
-            prolog.consult("team_rules.pl")
-            PROLOG_AVAILABLE = True
-            print("✓ Prolog loaded successfully")
+        result = subprocess.run(['swipl', '--version'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print(f"✓ SWI-Prolog found: {result.stdout.strip()}")
+            return True
         else:
-            print("✗ team_rules.pl not found")
+            print("✗ SWI-Prolog not responding correctly")
+            return False
+    except FileNotFoundError:
+        print("✗ SWI-Prolog not found in PATH")
+        return False
+    except Exception as e:
+        print(f"✗ Error checking SWI-Prolog: {e}")
+        return False
+
+# First check if SWI-Prolog is installed
+swipl_ok = test_swipl_installation()
+
+if swipl_ok:
+    try:
+        from pyswip import Prolog
+        print("✓ PySwip module imported")
+        
+        # Wrap Prolog initialization in try-catch
+        try:
+            prolog = Prolog()
+            print("✓ Prolog engine initialized")
+            
+            # Try to consult the file
+            if os.path.exists("team_rules.pl"):
+                # Use a simpler consult approach
+                prolog.consult("team_rules.pl")
+                
+                # Test with a simple query to make sure it's working
+                test_result = list(prolog.query("important_coverage_type(X)"))
+                if len(test_result) > 0:
+                    PROLOG_AVAILABLE = True
+                    print("✓ Prolog knowledge base loaded and tested successfully!")
+                else:
+                    print("✗ Prolog loaded but queries not working")
+                    prolog = None
+            else:
+                print("✗ team_rules.pl not found")
+                prolog = None
+        except Exception as prolog_error:
+            print(f"✗ Prolog engine error: {prolog_error}")
+            print("  Falling back to non-Prolog mode")
             prolog = None
-    except Exception as prolog_error:
-        print(f"✗ Prolog engine initialization failed: {prolog_error}")
-        print("  This is usually a SWI-Prolog installation issue")
-        prolog = None
+            PROLOG_AVAILABLE = False
+    except ImportError:
+        print("✗ PySwip not installed")
+        print("  Running in fallback mode (without Prolog recommendations)")
         PROLOG_AVAILABLE = False
-except ImportError:
-    print("✗ PySwip not installed")
-    print("  Running in fallback mode (without Prolog recommendations)")
+    except Exception as e:
+        print(f"✗ Prolog initialization failed: {e}")
+        print("  Running in fallback mode (without Prolog recommendations)")
+        PROLOG_AVAILABLE = False
+else:
+    print("  Skipping PySwip since SWI-Prolog is not available")
     PROLOG_AVAILABLE = False
-except Exception as e:
-    print(f"✗ Prolog initialization failed: {e}")
-    print("  Running in fallback mode (without Prolog recommendations)")
-    PROLOG_AVAILABLE = False
+
+print("=" * 60)
 
 # Load Smogon data
 SMOGON_DATA = {}
@@ -66,6 +107,61 @@ def load_smogon_data():
 load_smogon_data()
 
 
+def normalize_pokemon_name(name):
+    """Normalize Pokemon name for Prolog (lowercase, no special chars)"""
+    return name.lower().replace("'", "").replace("-", "_").replace(" ", "_").replace(".", "")
+
+
+def normalize_type_name(type_name):
+    """Normalize type name for Prolog"""
+    return type_name.lower().replace("-", "_")
+
+
+def safe_prolog_query(query_str):
+    """Safely execute a Prolog query with error handling"""
+    global prolog, PROLOG_AVAILABLE
+    
+    if not PROLOG_AVAILABLE or prolog is None:
+        return None
+    
+    try:
+        result = list(prolog.query(query_str))
+        return result
+    except Exception as e:
+        print(f"  Prolog query error: {e}")
+        return None
+
+
+def safe_prolog_assert(fact_str):
+    """Safely assert a Prolog fact with error handling"""
+    global prolog, PROLOG_AVAILABLE
+    
+    if not PROLOG_AVAILABLE or prolog is None:
+        return False
+    
+    try:
+        list(prolog.query(f"assertz({fact_str})"))
+        return True
+    except Exception as e:
+        print(f"  Prolog assert error for '{fact_str}': {e}")
+        return False
+
+
+def safe_prolog_retractall(pattern):
+    """Safely retract all matching Prolog facts"""
+    global prolog, PROLOG_AVAILABLE
+    
+    if not PROLOG_AVAILABLE or prolog is None:
+        return False
+    
+    try:
+        list(prolog.query(f"retractall({pattern})"))
+        return True
+    except Exception as e:
+        print(f"  Prolog retractall error for '{pattern}': {e}")
+        return False
+
+
 class PokemonTeamAdvisor:
     def __init__(self):
         self.pokeapi_base = "https://pokeapi.co/api/v2/"
@@ -75,15 +171,14 @@ class PokemonTeamAdvisor:
         try:
             response = requests.get(f"{self.pokeapi_base}pokemon/{name.lower()}")
             if response.status_code == 200:
-                print("Success!")
                 data = response.json()
                 return {
                     'name': data['name'],
                     'types': [t['type']['name'] for t in data['types']],
                     'stats': {s['stat']['name']: s['base_stat'] for s in data['stats']}
                 }
-        except:
-            pass
+        except Exception as e:
+            print(f"  ✗ Error fetching {name}: {e}")
         return None
     
     def add_team_to_prolog(self, team_data):
@@ -93,53 +188,69 @@ class PokemonTeamAdvisor:
             return False
             
         try:
-            # Safely retract all facts
-            try:
-                prolog.retractall("current_pokemon(_)")
-                prolog.retractall("has_type(_, _)")
-                prolog.retractall("base_stat(_, _, _)")
-                prolog.retractall("viable_pokemon(_)")
-            except Exception as e:
-                print(f"  Warning during retract: {e}")
-                # Continue anyway, might still work
+            # Safely retract all dynamic facts
+            print("Clearing previous Prolog facts...")
+            safe_prolog_retractall("current_pokemon(_)")
+            safe_prolog_retractall("has_type(_, _)")
+            safe_prolog_retractall("base_stat(_, _, _)")
             
             print("Adding Prolog facts:")
             
-            # Add viable Pokemon from Smogon
-            for viable_name in list(VIABLE_POKEMON)[:100]:  # Limit to prevent overload
-                try:
-                    # Normalize the name for Prolog
-                    safe_name = viable_name.lower().replace("'", "").replace("-", "")
-                    prolog.assertz(f"viable_pokemon('{safe_name}')")
-                except Exception as e:
-                    print(f"  Warning: Could not add viable pokemon {viable_name}: {e}")
-                    continue
-            
+            # Add current team Pokemon
             for pokemon in team_data:
-                name = pokemon['name']
-                print(f"  Pokemon: {name}")
+                name = normalize_pokemon_name(pokemon['name'])
+                print(f"  Adding: {name}")
                 
-                try:
-                    # Assert Pokemon exists
-                    prolog.assertz(f"current_pokemon('{name}')")
-         
-                    # Add base stats
-                    for stat_name, val in pokemon['stats'].items():
-                        prolog.assertz(f"base_stat('{name}', '{stat_name}', {val})")
-                        print(f"    base_stat({name}, {stat_name}, {val})")
-                        
-                    # Add types
-                    for t in pokemon['types']:
-                        prolog.assertz(f"has_type('{name}', {t})")
-                        print(f"    has_type({name}, {t})")
-                except Exception as e:
-                    print(f"  Warning: Could not add pokemon {name}: {e}")
+                # Assert Pokemon exists on current team
+                if not safe_prolog_assert(f"current_pokemon({name})"):
                     continue
+     
+                # Add base stats
+                for stat_name, val in pokemon['stats'].items():
+                    safe_stat = normalize_type_name(stat_name)
+                    safe_prolog_assert(f"base_stat({name}, '{safe_stat}', {val})")
+                    
+                # Add types
+                for t in pokemon['types']:
+                    safe_type = normalize_type_name(t)
+                    if safe_prolog_assert(f"has_type({name}, {safe_type})"):
+                        print(f"    has_type({name}, {safe_type})")
             
+            print("✓ Facts added to Prolog")
             return True
+            
         except Exception as e:
             print(f"Error adding facts to Prolog: {e}")
             return False
+    
+    def test_prolog_queries(self):
+        """Test basic Prolog queries to verify facts are loaded"""
+        if not PROLOG_AVAILABLE or prolog is None:
+            return
+            
+        print("\n--- Prolog Debug Queries ---")
+        
+        # Test current_pokemon
+        results = safe_prolog_query("current_pokemon(X)")
+        if results:
+            print(f"current_pokemon(X): {[r['X'] for r in results]}")
+        
+        # Test has_type
+        results = safe_prolog_query("has_type(X, Y)")
+        if results:
+            print(f"has_type(X, Y): {[(r['X'], r['Y']) for r in results[:10]]}")
+        
+        # Test team_covers_type
+        results = safe_prolog_query("team_covers_type(X)")
+        if results:
+            print(f"team_covers_type(X): {[r['X'] for r in results]}")
+        
+        # Test needs_offensive_coverage
+        results = safe_prolog_query("needs_offensive_coverage(X)")
+        if results:
+            print(f"needs_offensive_coverage(X): {[r['X'] for r in results]}")
+        
+        print("--- End Debug ---\n")
                 
     def prolog_recommendations(self, team_data):
         """Use Prolog for intelligent recommendations"""
@@ -148,33 +259,43 @@ class PokemonTeamAdvisor:
             return self.fallback_recommendations(team_data)
         
         try:
+            print("Attempting Prolog query...")
             success = self.add_team_to_prolog(team_data)
             if not success:
                 print("  Failed to add team to Prolog, using fallback")
                 return self.fallback_recommendations(team_data)
             
+            # Debug: test queries
+            self.test_prolog_queries()
+            
             recommendations = []
             
-            # Query for recommendations with timeout protection
-            try:
-                query = "recommend_pokemon(Pokemon, Explanation)"
-                print(f"  Querying Prolog: {query}")
-                
-                # Try to get results
-                results = list(prolog.query(query))
-                print(f"  Got {len(results)} results from Prolog")
-                
-                # Limit to top 5 recommendations
-                for result in results[:5]:
-                    recommendations.append({
-                        'pokemon': result['Pokemon'],
-                        'explanation': result['Explanation']
-                    })
-                    
-            except Exception as query_error:
-                print(f"  Prolog query failed: {query_error}")
-                print("  Falling back to heuristic recommendations")
+            # Query for recommendations
+            query = "recommend_pokemon(Pokemon, Explanation)"
+            print(f"Query: {query}")
+            
+            results = safe_prolog_query(query)
+            
+            if results is None:
+                print("  Prolog query failed, using fallback")
                 return self.fallback_recommendations(team_data)
+            
+            print(f"Got {len(results)} results from Prolog")
+            
+            # Process results (limit to top 5)
+            seen_pokemon = set()
+            for result in results:
+                pokemon_name = str(result['Pokemon'])
+                if pokemon_name not in seen_pokemon:
+                    seen_pokemon.add(pokemon_name)
+                    explanation = str(result['Explanation'])
+                    recommendations.append({
+                        'pokemon': pokemon_name,
+                        'explanation': explanation
+                    })
+                    print(f"  Recommendation: {pokemon_name} - {explanation}")
+                    if len(recommendations) >= 5:
+                        break
                 
         except Exception as e:
             print(f"  Prolog recommendation error: {e}")
@@ -182,7 +303,7 @@ class PokemonTeamAdvisor:
             
         # If no recommendations from Prolog, use fallback
         if not recommendations:
-            print("  No Prolog recommendations, using fallback")
+            print("No Prolog results, using fallback")
             return self.fallback_recommendations(team_data)
             
         return recommendations
@@ -200,83 +321,70 @@ class PokemonTeamAdvisor:
         important_types = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water', 'ice', 'dragon']
         missing_types = [t for t in important_types if t not in current_types]
         
-        # Suggest Pokemon for missing types
+        # Suggest Pokemon for missing types (using Gen9 OU viable Pokemon)
         type_suggestions = {
-            'fighting': ('machamp', 'Provides strong Fighting-type coverage'),
-            'ground': ('garchomp', 'Excellent Ground-type attacker with great stats'),
-            'steel': ('ferrothorn', 'Provides Steel-type coverage and defensive utility'),
-            'fairy': ('clefable', 'Fairy-type with excellent defensive capabilities'),
-            'fire': ('volcarona', 'Powerful Fire/Bug special attacker'),
-            'water': ('toxapex', 'Water/Poison wall with excellent defense'),
-            'ice': ('weavile', 'Fast Ice/Dark physical attacker'),
-            'dragon': ('dragapult', 'Fast Dragon/Ghost special attacker')
+            'fighting': ('great_tusk', 'Provides missing Fighting-type coverage (Gen9 OU)'),
+            'ground': ('garchomp', 'Provides missing Ground-type coverage (Gen9 OU)'),
+            'steel': ('kingambit', 'Provides missing Steel-type coverage (Gen9 OU)'),
+            'fairy': ('iron_valiant', 'Provides missing Fairy-type coverage (Gen9 OU)'),
+            'fire': ('chi_yu', 'Provides missing Fire-type coverage (Gen9 OU)'),
+            'water': ('palafin', 'Provides missing Water-type coverage (Gen9 OU)'),
+            'ice': ('chien_pao', 'Provides missing Ice-type coverage (Gen9 OU)'),
+            'dragon': ('dragapult', 'Provides missing Dragon-type coverage (Gen9 OU)')
         }
         
-        for missing_type in missing_types[:3]:  # Top 3 missing
+        for missing_type in missing_types[:5]:
             if missing_type in type_suggestions:
-                pokemon, explanation = type_suggestions[missing_type]
+                name, reason = type_suggestions[missing_type]
                 recommendations.append({
-                    'pokemon': pokemon,
-                    'explanation': f'{explanation} (Missing {missing_type}-type coverage)'
+                    'pokemon': name,
+                    'explanation': reason
                 })
         
-        # Check for role balance
-        roles = self.identify_roles(team_data)
-        if roles.get('wall', 0) == 0:
-            recommendations.append({
-                'pokemon': 'toxapex',
-                'explanation': 'Team needs a defensive wall for balance'
-            })
-        
-        if roles.get('physical_sweeper', 0) == 0:
-            recommendations.append({
-                'pokemon': 'garchomp',
-                'explanation': 'Team needs a physical sweeper for offensive pressure'
-            })
-        
-        return recommendations[:5]  # Return top 5
+        return recommendations
     
     def propositional_analysis(self, team_data):
-        """Apply propositional logic rules to team"""
+        """Propositional logic for type coverage analysis"""
         important_types = ['fighting', 'ground', 'steel', 'fairy', 'fire', 'water', 'ice', 'dragon']
-        coverage = {}
         
-        for p_type in important_types:
-            coverage[p_type] = any(
-                p_type in pokemon['types']
-                for pokemon in team_data
-            )
+        covered_types = set()
+        for pokemon in team_data:
+            covered_types.update(pokemon['types'])
+        
+        type_coverage = {}
+        for imp_type in important_types:
+            type_coverage[imp_type] = imp_type in covered_types
+        
+        coverage_score = sum(type_coverage.values()) / len(important_types)
         
         return {
-            'type_coverage': coverage,
-            'score': sum(1 for covered in coverage.values() if covered) / len(important_types)
+            'type_coverage': type_coverage,
+            'score': coverage_score
         }
-      
+    
     def role_planning(self, team_data):
-        """PDDL-like planning for team roles"""
+        """Analyze team roles"""
+        roles = self.calculate_roles(team_data)
+        
         required_roles = {
             'physical_sweeper': 1,
             'special_sweeper': 1,
-            'wall': 1,
-            'tank': 1
+            'wall': 1
         }
         
-        current_roles = self.identify_roles(team_data)
         missing_roles = {}
-        
-        for role, count in required_roles.items():
-            current = current_roles.get(role, 0)
-            if current < count:
-                missing_roles[role] = count - current
+        for role, required in required_roles.items():
+            current = roles.get(role, 0)
+            if current < required:
+                missing_roles[role] = required - current
         
         return {
-            'current_roles': current_roles,
-            'missing_roles': missing_roles,
-            'plan': f"Consider adding: {', '.join(missing_roles.keys())}" if missing_roles else "Team composition is balanced!"
+            'current_roles': roles,
+            'missing_roles': missing_roles
         }
     
-    def identify_roles(self, team_data):
-        """Identify roles of current team members"""
+    def calculate_roles(self, team_data):
+        """Calculate role distribution of team"""
         roles = {
             'physical_sweeper': 0,
             'special_sweeper': 0,
@@ -360,7 +468,7 @@ class PokemonTeamAdvisor:
         coverage_score = analysis['propositional_logic']['score'] * 100
         missing_roles = analysis['planning']['missing_roles']
         
-        prolog_status = "✓ Active" if PROLOG_AVAILABLE else "✗ Fallback mode (install SWI-Prolog for full functionality)"
+        prolog_status = "✓ Active" if PROLOG_AVAILABLE else "✗ Fallback mode (Prolog unavailable)"
         
         explanation = f"""Team Analysis Summary:
 
@@ -408,6 +516,7 @@ def analyze_team():
     """Main endpoint for team analysis"""
     data = request.json
     team_data = data.get('team', [])
+    print(f"\n{'='*60}")
     print(f"Received team with {len(team_data)} Pokemon")
     
     if len(team_data) == 0:
@@ -488,10 +597,14 @@ if __name__ == '__main__':
         print("\nTo enable Prolog features:")
         print("1. Install SWI-Prolog from: https://www.swi-prolog.org/download/stable")
         print("2. Make sure it's added to your PATH")
-        print("3. Restart this script")
+        print("3. Install PySwip: pip install pyswip")
+        print("4. Restart your computer")
+        print("5. Run this script again")
     print("\nTo use:")
     print("1. Open http://127.0.0.1:5000 in browser")
     print("2. Add Pokémon to team")
     print("3. Click 'Get Prolog Analysis' button")
     print("=" * 60)
-    app.run(debug=True, port=5000, host='127.0.0.1')
+    
+    # Run without debug mode to avoid reloader issues with Prolog
+    app.run(debug=False, port=5000, host='127.0.0.1')
