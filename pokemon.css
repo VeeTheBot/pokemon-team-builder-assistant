@@ -342,6 +342,10 @@ h1 {
     transform: translateY(-2px);
 }
 
+.btn-shadow {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
 .error-message {
     color: #ef4444;
     font-weight: bold;
