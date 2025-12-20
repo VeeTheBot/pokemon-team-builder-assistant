@@ -9,9 +9,9 @@ A competitive Pokémon team building assistant that uses **Prolog logic programm
 Created for CPSC 583 F25.
 
 ### Authors:
-* Manhattan Calabro
-* Brian Phung
 * Zhengyao Huang
+* Brian Phung
+* Manhattan Calabro
 
 ---
 
