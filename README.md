@@ -34,7 +34,7 @@ This project demonstrates multiple AI/KR techniques:
 
 ---
 
-## 🚀 Quick Start (For Teammates)
+## 🚀 Quick Start
 
 ### Minimum Requirements (App will work in fallback mode)
 - **Python 3.8+** - [Download here](https://www.python.org/downloads/)
